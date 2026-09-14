@@ -1,128 +1,152 @@
 # openagri-backend
 
-Rust/Axum REST API backend for the [OpenAgri Analytics](https://github.com/OpenAgriAnalytics) platform.
+Rust REST API backend for the OpenAgri Analytics platform. Built with [Axum](https://github.com/tokio-rs/axum) and [SQLx](https://github.com/launchbadge/sqlx), backed by PostgreSQL.
 
-[![Rust CI](https://github.com/OpenAgriAnalytics/openagri-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/OpenAgriAnalytics/openagri-backend/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+## Tech stack
 
----
-
-## Overview
-
-The backend exposes a REST API for:
-
-- Agricultural dataset management
-- Crop yield, profit, and revenue analytics
-- Data-quality reports
-- Database-backed persistence via PostgreSQL
-
----
-
-## Tech Stack
-
-| Component | Technology |
+| Layer | Crate |
 |---|---|
-| Language | Rust (stable) |
-| Web framework | Axum 0.7 |
-| Database | PostgreSQL 15+ |
-| ORM / queries | SQLx 0.7 |
-| Async runtime | Tokio |
+| HTTP framework | `axum 0.7` |
+| Async runtime | `tokio 1` |
+| Database | `sqlx 0.7` + PostgreSQL |
+| Serialization | `serde` + `serde_json` |
+| Error handling | `thiserror` + `anyhow` |
+| Logging | `tracing` + `tracing-subscriber` |
+| Validation | `validator 0.18` |
 
----
-
-## API Endpoints
+## Project structure
 
 ```
-GET    /health
-GET    /datasets
-POST   /datasets
-GET    /datasets/:id
-DELETE /datasets/:id
-
-GET    /analytics/yield
-GET    /analytics/profit
-GET    /analytics/revenue
-GET    /analytics/crops
-GET    /analytics/quality/:dataset_id
+openagri-backend/
+├── src/
+│   ├── main.rs                    # Server setup, CORS, router assembly
+│   ├── config.rs                  # Config from environment variables
+│   ├── error.rs                   # AppError → HTTP response mapping
+│   ├── db/
+│   │   └── postgres.rs            # PgPool connection + SQLx migrations
+│   ├── models/
+│   │   ├── dataset.rs             # Dataset, AgricultureRecord structs
+│   │   └── analytics.rs           # Analytics summary structs
+│   ├── routes/
+│   │   ├── health.rs              # GET /health
+│   │   ├── datasets.rs            # CRUD /datasets
+│   │   └── analytics.rs           # GET /analytics/*
+│   └── services/
+│       ├── dataset_service.rs     # Dataset business logic
+│       └── analytics_service.rs   # Analytics query logic
+├── migrations/
+│   └── 0001_initial_schema.sql    # datasets + agriculture_records tables
+├── analytics/
+│   ├── python/                    # Data cleaning and visualization scripts
+│   └── sql/                       # Standalone SQL analysis queries
+├── data/
+│   ├── sample/agriculture.csv     # Sample dataset
+│   ├── raw/                       # Raw data drop folder
+│   └── cleaned/                   # Cleaned data output folder
+├── docs/
+│   ├── api.md                     # API endpoint reference
+│   └── architecture.md            # System architecture overview
+├── .env.example                   # Environment variable template
+└── Cargo.toml
 ```
 
----
+## Prerequisites
 
-## Quick Start
+- [Rust](https://rustup.rs/) 1.75+
+- PostgreSQL 14+
+- [`sqlx-cli`](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli) (optional, for manual migrations)
 
-### Requirements
+## Getting started
 
-- [Rust](https://rustup.rs) stable toolchain
-- PostgreSQL 15+
-
-### Setup
+### 1. Clone and configure
 
 ```bash
-git clone https://github.com/OpenAgriAnalytics/openagri-backend.git
+git clone https://github.com/openagri-analytics/openagri-backend.git
 cd openagri-backend
-
 cp .env.example .env
-# Edit .env — set DATABASE_URL to your PostgreSQL connection string
+```
 
+Edit `.env`:
+
+```env
+HOST=0.0.0.0
+PORT=3000
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/openagri
+```
+
+### 2. Create the database
+
+```bash
+psql -U postgres -c "CREATE DATABASE openagri;"
+```
+
+### 3. Run the server
+
+```bash
 cargo run
 ```
 
-API available at `http://localhost:3000`
+SQLx will automatically apply migrations from `migrations/` on startup. The server starts at `http://0.0.0.0:3000`.
+
+## API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check — returns service name and version |
+| `GET` | `/datasets` | List all datasets |
+| `POST` | `/datasets` | Create a dataset |
+| `GET` | `/datasets/:id` | Get a dataset by UUID |
+| `DELETE` | `/datasets/:id` | Delete a dataset by UUID |
+| `GET` | `/analytics/yield` | Average yield grouped by crop |
+| `GET` | `/analytics/profit` | Profit summary grouped by crop |
+| `GET` | `/analytics/revenue` | Revenue summary grouped by region/state |
+| `GET` | `/analytics/crops` | List of distinct crop types |
+| `GET` | `/analytics/quality/:dataset_id` | Data quality report for a dataset |
+
+### Example requests
 
 ```bash
+# Health check
 curl http://localhost:3000/health
-# {"status":"ok","service":"openagri-backend","version":"0.1.0"}
+
+# List datasets
+curl http://localhost:3000/datasets
+
+# Create a dataset
+curl -X POST http://localhost:3000/datasets \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Nigeria 2024", "description": "National crop data", "source": "FMARD"}'
+
+# Yield analytics
+curl http://localhost:3000/analytics/yield
 ```
 
-### Run tests
+## Database schema
+
+Two tables are created by `migrations/0001_initial_schema.sql`:
+
+**`datasets`** — metadata for each uploaded dataset (name, description, source, record count, file hash).
+
+**`agriculture_records`** — individual farming records linked to a dataset (farmer ID, state, crop, farm size, yield, irrigation, rainfall, market price, production cost, revenue, profit, harvest date).
+
+## Running tests
 
 ```bash
 cargo test
 ```
 
----
+## Environment variables
 
-## Project Structure
-
-```
-openagri-backend/
-├── migrations/           # SQLx database migrations
-├── src/
-│   ├── main.rs           # Entry point — server setup
-│   ├── config.rs         # Environment config
-│   ├── error.rs          # AppError → HTTP response mapping
-│   ├── db/
-│   │   └── postgres.rs   # Connection pool + migrations
-│   ├── models/
-│   │   ├── dataset.rs    # Dataset and AgricultureRecord structs
-│   │   └── analytics.rs  # Analytics response structs
-│   ├── routes/
-│   │   ├── health.rs
-│   │   ├── datasets.rs
-│   │   └── analytics.rs
-│   └── services/
-│       ├── dataset_service.rs
-│       └── analytics_service.rs
-├── .env.example
-├── Cargo.toml
-└── README.md
-```
-
----
-
-## Related Repos
-
-| Repo | Description |
-|---|---|
-| [openagri-frontend](https://github.com/OpenAgriAnalytics/openagri-frontend) | Analytics dashboard (HTML/JS) |
-| [openagri-contract](https://github.com/OpenAgriAnalytics/openagri-contract) | Rust smart contract for contribution tracking |
-
----
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HOST` | `0.0.0.0` | Bind address |
+| `PORT` | `3000` | Bind port |
+| `DATABASE_URL` | `postgres://postgres:postgres@localhost:5432/openagri` | PostgreSQL connection string |
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). All contributions earn points tracked on-chain.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-[MIT](LICENSE)
+MIT — see [LICENSE](LICENSE).
