@@ -1,0 +1,21 @@
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+
+# Environment / Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
